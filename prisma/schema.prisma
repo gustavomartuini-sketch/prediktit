@@ -1,0 +1,330 @@
+// PrediktIt - Production Database Schema
+// Run: npx prisma generate && npx prisma db push
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USER & AUTH
+// ============================================================
+
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  email         String    @unique
+  password      String?   // null for wallet-only users
+  image         String?
+  role          UserRole  @default(USER)
+
+  // Balances
+  playBalance   Float     @default(10000)
+
+  // Crypto wallet
+  walletAddress String?   @unique
+
+  // Relations
+  positions     Position[]
+  trades        Trade[]
+  markets       Market[]    @relation("MarketCreator")
+  comments      Comment[]
+
+  // Auth
+  emailVerified DateTime?
+  accounts      Account[]
+  sessions      Session[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([email])
+  @@index([walletAddress])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  MODERATOR
+}
+
+// ============================================================
+// MARKETS
+// ============================================================
+
+model Market {
+  id             String       @id @default(cuid())
+  title          String
+  description    String       @db.Text
+  category       String
+  type           MarketType
+  status         MarketStatus @default(ACTIVE)
+  featured       Boolean      @default(false)
+
+  // Resolution
+  resolution     String?      // Which outcome won
+  resolvedAt     DateTime?
+
+  // Financials
+  totalVolume    Float        @default(0)
+  totalLiquidity Float        @default(1000)
+
+  // Timing
+  endDate        DateTime
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relations
+  creatorId      String
+  creator        User         @relation("MarketCreator", fields: [creatorId], references: [id])
+  outcomes       Outcome[]
+  trades         Trade[]
+  comments       Comment[]
+  positions      Position[]
+
+  // Marketing
+  marketingPosts MarketingPost[]
+  seoArticles    SEOArticle[]
+
+  @@index([category])
+  @@index([status])
+  @@index([featured])
+  @@index([createdAt])
+}
+
+enum MarketType {
+  BINARY
+  MULTIPLE
+  SCALAR
+}
+
+enum MarketStatus {
+  PENDING    // Awaiting admin approval
+  ACTIVE
+  PAUSED
+  RESOLVED
+  CANCELLED
+}
+
+model Outcome {
+  id        String   @id @default(cuid())
+  name      String
+  price     Float    @default(0.5)
+  shares    Float    @default(1000)
+  volume    Float    @default(0)
+
+  marketId  String
+  market    Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  trades    Trade[]
+  positions Position[]
+
+  @@index([marketId])
+}
+
+// ============================================================
+// TRADING
+// ============================================================
+
+model Trade {
+  id        String    @id @default(cuid())
+  side      TradeSide
+  shares    Float
+  price     Float
+  cost      Float
+
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+
+  marketId  String
+  market    Market    @relation(fields: [marketId], references: [id])
+
+  outcomeId String
+  outcome   Outcome   @relation(fields: [outcomeId], references: [id])
+
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([marketId])
+  @@index([createdAt])
+}
+
+enum TradeSide {
+  BUY
+  SELL
+}
+
+model Position {
+  id        String  @id @default(cuid())
+  shares    Float
+  avgPrice  Float
+
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+
+  marketId  String
+  market    Market  @relation(fields: [marketId], references: [id])
+
+  outcomeId String
+  outcome   Outcome @relation(fields: [outcomeId], references: [id])
+
+  @@unique([userId, marketId, outcomeId])
+  @@index([userId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  marketId  String
+  market    Market   @relation(fields: [marketId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([marketId])
+}
+
+// ============================================================
+// MARKETING ENGINE
+// ============================================================
+
+model MarketingPost {
+  id          String      @id @default(cuid())
+  content     String      @db.Text
+  platform    Platform
+  status      PostStatus  @default(SCHEDULED)
+
+  // Engagement metrics
+  impressions Int         @default(0)
+  likes       Int         @default(0)
+  shares      Int         @default(0)
+  clicks      Int         @default(0)
+
+  // Scheduling
+  scheduledAt DateTime
+  publishedAt DateTime?
+
+  marketId    String
+  market      Market      @relation(fields: [marketId], references: [id])
+
+  createdAt   DateTime    @default(now())
+
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([platform])
+}
+
+model SEOArticle {
+  id              String        @id @default(cuid())
+  title           String
+  slug            String        @unique
+  metaDescription String
+  keywords        String[]
+  content         String        @db.Text
+  status          ArticleStatus @default(DRAFT)
+
+  // SEO metrics
+  pageViews       Int           @default(0)
+  avgTimeOnPage   Float         @default(0)
+  bounceRate      Float         @default(0)
+
+  publishedAt     DateTime?
+
+  marketId        String
+  market          Market        @relation(fields: [marketId], references: [id])
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([slug])
+  @@index([status])
+}
+
+enum Platform {
+  TWITTER
+  REDDIT
+  DISCORD
+  LINKEDIN
+  TIKTOK
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+enum ArticleStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+// ============================================================
+// MARKETING AUTOMATION CONFIG
+// ============================================================
+
+model MarketingConfig {
+  id                String   @id @default(cuid())
+
+  // Social posting config
+  postsPerDay       Int      @default(3)
+  platforms         Platform[]
+  postingHoursStart Int      @default(9)  // 9 AM
+  postingHoursEnd   Int      @default(21) // 9 PM
+
+  // SEO config
+  articlesPerWeek   Int      @default(5)
+  autoPublish       Boolean  @default(false)
+
+  // API keys (encrypted in production)
+  twitterApiKey     String?  @db.Text
+  redditApiKey      String?  @db.Text
+  openaiApiKey      String?  @db.Text
+
+  updatedAt         DateTime @updatedAt
+}
