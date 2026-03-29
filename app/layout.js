@@ -1,4 +1,5 @@
 import '../styles/globals.css';
+import Providers from '../components/Providers';
 
 export const metadata = {
   title: 'PrediktIt - Prediction Market Platform',
@@ -15,6 +16,7 @@ export default function RootLayout({ children }) {
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
       </head>
       <body>
+        <Providers>
         <nav className="navbar">
           <div className="nav-container">
             <a href="/" className="nav-logo">
@@ -22,7 +24,7 @@ export default function RootLayout({ children }) {
               <span className="logo-text">PrediktIt</span>
             </a>
             <div className="nav-links">
-              <a href="/" className="nav-link">Markets</a>
+              <a href="/markets" className="nav-link">Markets</a>
               <a href="/create" className="nav-link">Create</a>
               <a href="/dashboard" className="nav-link">Dashboard</a>
               <a href="/portfolio" className="nav-link">Portfolio</a>
@@ -53,23 +55,23 @@ export default function RootLayout({ children }) {
               </div>
               <div className="footer-col">
                 <h4>Platform</h4>
-                <a href="/">All Markets</a>
+                <a href="/markets">All Markets</a>
                 <a href="/create">Create Market</a>
                 <a href="/dashboard">Dashboard</a>
                 <a href="/portfolio">Portfolio</a>
               </div>
               <div className="footer-col">
                 <h4>Resources</h4>
-                <a href="#">How It Works</a>
-                <a href="#">API Docs</a>
-                <a href="#">Blog</a>
-                <a href="#">FAQ</a>
+                <a href="/markets">How It Works</a>
+                <a href="/api/markets">API Docs</a>
+                <a href="/marketing">Blog</a>
+                <a href="/markets">FAQ</a>
               </div>
               <div className="footer-col">
                 <h4>Legal</h4>
-                <a href="#">Terms of Service</a>
-                <a href="#">Privacy Policy</a>
-                <a href="#">Risk Disclosure</a>
+                <a href="/markets">Terms of Service</a>
+                <a href="/markets">Privacy Policy</a>
+                <a href="/markets">Risk Disclosure</a>
               </div>
             </div>
             <div className="footer-bottom">
@@ -77,6 +79,7 @@ export default function RootLayout({ children }) {
             </div>
           </div>
         </footer>
+        </Providers>
       </body>
     </html>
   );
