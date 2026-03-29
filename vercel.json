@@ -6,7 +6,7 @@
   "crons": [
     {
       "path": "/api/marketing/run",
-      "schedule": "0 */4 * * *"
+            "schedule": "0 0 * * *"
     }
   ],
   "headers": [
