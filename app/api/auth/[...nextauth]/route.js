@@ -1,19 +1,9 @@
 import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-// Production imports (uncomment when DB is ready):
-// import GoogleProvider from 'next-auth/providers/google';
-// import { PrismaAdapter } from '@next-auth/prisma-adapter';
-// import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
-
-// Demo user store (replace with Prisma in production)
-const demoUsers = [
-  { id: 'demo-1', email: 'demo@prediktit.com', username: 'demo_trader', password: '$2a$12$LJ3P/fCA6vGHXhTmfXqVYeL8UOy.qJZfNOILOUOLX8TQfXPJVLEOC', role: 'USER', playBalance: 10000 },
-  { id: 'admin-1', email: 'admin@prediktit.com', username: 'admin_chief', password: '$2a$12$LJ3P/fCA6vGHXhTmfXqVYeL8UOy.qJZfNOILOUOLX8TQfXPJVLEOC', role: 'ADMIN', playBalance: 100000 },
-];
+import prisma from '@/lib/prisma';
 
 export const authOptions = {
-  // Production: adapter: PrismaAdapter(prisma),
   providers: [
     CredentialsProvider({
       name: 'credentials',
@@ -26,30 +16,43 @@ export const authOptions = {
           throw new Error('Email and password required');
         }
 
-        // Demo mode: check in-memory users
-        const user = demoUsers.find(u => u.email === credentials.email);
+        try {
+          // Find user in database
+          let user = await prisma.user.findUnique({
+            where: { email: credentials.email.toLowerCase() },
+          });
 
-        if (!user) {
-          // In demo mode, auto-create user
-          const newUser = {
-            id: `user_${Date.now()}`,
-            email: credentials.email,
-            username: credentials.email.split('@')[0],
-            role: 'USER',
-            playBalance: 10000,
+          if (!user) {
+            // Auto-create user in demo mode (any email/password works)
+            const hashedPassword = await bcrypt.hash(credentials.password, 12);
+            user = await prisma.user.create({
+              data: {
+                email: credentials.email.toLowerCase(),
+                username: credentials.email.split('@')[0] + '_' + Date.now().toString(36),
+                password: hashedPassword,
+                playBalance: 10000,
+              },
+            });
+          } else {
+            // Verify password if user has one
+            if (user.password) {
+              const isValid = await bcrypt.compare(credentials.password, user.password);
+              if (!isValid) {
+                throw new Error('Invalid password');
+              }
+            }
+          }
+
+          return {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            role: user.role,
           };
-          demoUsers.push(newUser);
-          return newUser;
+        } catch (error) {
+          console.error('Auth error:', error);
+          throw new Error(error.message || 'Authentication failed');
         }
-
-        // Production: const isValid = await bcrypt.compare(credentials.password, user.password);
-        // For demo, accept any password
-        return {
-          id: user.id,
-          email: user.email,
-          username: user.username,
-          role: user.role,
-        };
       },
     }),
 
@@ -67,7 +70,6 @@ export const authOptions = {
           throw new Error('Wallet address and signature required');
         }
 
-        // Verify signature with ethers.js
         const { ethers } = await import('ethers');
         try {
           const recoveredAddress = ethers.verifyMessage(credentials.message, credentials.signature);
@@ -78,24 +80,38 @@ export const authOptions = {
           throw new Error('Signature verification failed');
         }
 
-        // Demo: auto-create wallet user
-        const existing = demoUsers.find(u => u.walletAddress === credentials.address.toLowerCase());
-        if (existing) return existing;
+        try {
+          // Find or create wallet user in DB
+          let user = await prisma.user.findUnique({
+            where: { walletAddress: credentials.address.toLowerCase() },
+          });
 
-        const user = {
-          id: `wallet_${Date.now()}`,
-          email: `${credentials.address.slice(0, 10)}@wallet.prediktit.com`,
-          username: `wallet_${credentials.address.slice(0, 8)}`,
-          walletAddress: credentials.address.toLowerCase(),
-          role: 'USER',
-          playBalance: 10000,
-        };
-        demoUsers.push(user);
-        return user;
+          if (!user) {
+            user = await prisma.user.create({
+              data: {
+                email: `${credentials.address.slice(0, 10)}@wallet.prediktit.com`,
+                username: `wallet_${credentials.address.slice(2, 10)}`,
+                walletAddress: credentials.address.toLowerCase(),
+                playBalance: 10000,
+              },
+            });
+          }
+
+          return {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            role: user.role,
+            walletAddress: user.walletAddress,
+          };
+        } catch (error) {
+          console.error('Wallet auth error:', error);
+          throw new Error('Wallet authentication failed');
+        }
       },
     }),
 
-    // Production: add Google OAuth
+    // Google OAuth (add env vars to enable)
     // ...(process.env.GOOGLE_CLIENT_ID ? [GoogleProvider({ clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET })] : []),
   ],
 
